@@ -1,88 +1,321 @@
-let points = []
-points.push({x: 0, y: 0})
-for (let i = 0; i < 100; i++) {
-  points.push({
-    x: Math.round(Math.random() * (100 - 1)),
-    y: Math.round(Math.random() * (100 - 1))
+console.clear()
+const axios = require('axios')
+const data = {
+  token: "30d09cb3-a614-4bd9-99aa-0071fad81680",
+  map_url: "https://datsanta.dats.team/json/map/dd6ed651-8ed6-4aeb-bcbc-d8a51c8383cc.json",
+  mapID: "dd6ed651-8ed6-4aeb-bcbc-d8a51c8383cc",
+  route_url: "https://datsanta.dats.team/api/round3",
+  santa_base: {
+    x: 0,
+    y: 0
+  }
+}
+const info = require("./dd6ed651-8ed6-4aeb-bcbc-d8a51c8383cc.json")
+
+console.log("gifts:", info.gifts[0])
+console.log("children:", info.children[0])
+console.log("snowAreas:", info.snowAreas[0])
+console.log("--------------------------------------------------")
+
+const getDistance = (xStart = 0, yStart = 0, xEnd = 0, yEnd = 0) => {
+  return Math.round(Math.sqrt(Math.pow(xEnd - xStart, 2) + Math.pow(yEnd - yStart, 2)))
+}
+const isTouchingSnowArea = (xStart = 0, yStart = 0, xEnd = 0, yEnd = 0) => {
+  // console.time('isTouchingSnowArea')
+  let isTouched = false
+  let snowArea
+  for (let i = 0; i < info.snowAreas.length; i++) {
+    const area = info.snowAreas[i]
+    const vectorA = {
+      x: xEnd - xStart,
+      y: yEnd - yStart,
+      length: getDistance(xStart, yStart, xEnd, yEnd)
+    }
+    const vectorB = {
+      x: area.x - xStart,
+      y: area.y - yStart,
+      length: getDistance(xStart, yStart, area.x, area.y)
+    }
+    const AB = (vectorA.x * vectorB.x + vectorA.y * vectorB.y)
+    const AModule = Math.sqrt(Math.pow(vectorA.x, 2) + Math.pow(vectorA.y, 2))
+    const BModule = Math.sqrt(Math.pow(vectorB.x, 2) + Math.pow(vectorB.y, 2))
+    const cosAngle = AB / (AModule * BModule)
+    const angle = Math.acos(cosAngle) * 180 / Math.PI
+    const edge = vectorA.length > vectorB.length ? vectorB.length : vectorA.length
+    const height = Math.abs(edge * Math.sin(angle * Math.PI / 180))
+    if ((height < area.r && height >= 1 || height < area.r) && getDistance(xStart, yStart, area.x, area.y) <= getDistance(xStart, yStart, xEnd, yEnd) + area.r) {
+      isTouched = true
+      area.height = height
+      snowArea = area
+    }
+  }
+  // console.timeEnd('isTouchingSnowArea')
+  return [isTouched, isTouched ? snowArea : null]
+}
+// console.log(isTouchingSnowArea(0, 0, 4722, 1950))
+const isCoordinateInSnowArea = (x = 0, y = 0) => {
+  // console.time('isTouchingSnowArea')
+  const snowAreas = info.snowAreas
+  let isIn = false
+  let snowArea
+  snowAreas.forEach((area, index) => {
+    const length = getDistance(area.x, area.y, x, y)
+    if (length < area.r) {
+      isIn = true
+      snowArea = area
+    }
   })
+  // console.timeEnd('isTouchingSnowArea')
+  return [isIn, isIn ? snowArea : null]
 }
-let graphs = []
-for (let i = 0; i < points.length; i++) {
-  points[i].id = i + 1
-  points[i].distance = Math.round(Math.sqrt(Math.pow(0 - points[i].x, 2) + Math.pow(0 - points[i].y, 2)))
+// console.log(isCoordinateInSnowArea(4722,1950))
+const updateSnowAreas = (snowareas = [{r: null, x: null, y: null}]) => {
+  console.time('updateSnowAreas')
+  for (let i = 0; i < snowareas.length; i++) {
+    const length = Math.round(snowareas[i].r + snowareas[i].r * 0.13)
+    const x = snowareas[i].x
+    const y = snowareas[i].y
+    snowareas[i].length = length
+    snowareas[i].aura = [
+      {id: 1, x: x, y: y - length},
+      {id: 2, x: x + length, y: Math.round(y - (length / 2))},
+      {id: 3, x: x + length, y: Math.round(y + (length / 2))},
+      {id: 4, x: x, y: y + length},
+      {id: 5, x: x - length, y: Math.round(y + (length / 2))},
+      {id: 6, x: x - length, y: Math.round(y - (length / 2))},
+    ]
+    snowareas[i].aura = snowareas[i].aura.filter(aura => aura.x <= 10000 && aura.y <= 10000 && aura.x >= 0 && aura.y >= 0)
+    snowareas[i].aura = snowareas[i].aura.filter(aura => !isCoordinateInSnowArea(aura.x,aura.y)[0])
+    snowareas[i].aura = snowareas[i].aura.filter(aura => info.children.filter(child => aura.x == child.x && aura.y == child.y).length == 0)
+  }
+
+  console.timeEnd('updateSnowAreas')
+  return snowareas
 }
-function bubbleSortConcept1(arr) {
-  for (let j = arr.length - 1; j > 0; j--) {
-    for (let i = 0; i < j; i++) {
-      if (arr[i].distance > arr[i + 1].distance) {
-        let temp = arr[i];
-        arr[i] = arr[i + 1];
-        arr[i + 1] = temp;
+const updateChildren = (children = [{x: null, y: null}]) => {
+  console.time('updateChildren')
+  children.forEach(child=> {
+    child.isInSnowArea = isCoordinateInSnowArea(child.x, child.y)
+  })
+  console.timeEnd('updateChildren')
+  return children
+}
+// console.log(updateChildren(info.children, info.gifts)[0])
+const bubbleSortByWeight = (children = [{x: null, y: null}], gifts = [{id: null, x: null, y: null}]) => {
+  console.time('bubbleSortWeight')
+  for (let i = 0, endI = gifts.length - 1; i < endI; i++) {
+    for (let j = 0, endJ = endI - i; j < endJ; j++) {
+      if (gifts[j].weight > gifts[j + 1].weight) {
+        let swapGift = gifts[j]
+        let swapChild = children[j]
+        gifts[j] = gifts[j + 1]
+        children[j] = children[j + 1]
+        gifts[j + 1] = swapGift
+        children[j + 1] = swapChild
       }
     }
   }
+  // for (let i = 0; i < children.length; i++) {
+  //   children[i].graph = []
+  //   const otherChildrens = children.filter(child => child.id != children[i].id)
+  //   for (let j = 0; j < otherChildrens.length; j++) {
+  //     children[i].graph.push({
+  //       child: otherChildrens[j],
+  //       // distance: getDistance(children[i].x, children[i].y, otherChildrens[j].x, otherChildrens[j].y)
+  //     })
+  //   }
+  // }
+  console.timeEnd('bubbleSortWeight')
+  return {children, gifts};
 }
-for (let i = 0; i < points.length; i++) {
-  for (let j = 0; j < points.length; j++) {
-    const graph = {
-      point1: points[i].id,
-      point2: points[j].id,
-      weight: Math.round(Math.sqrt(Math.pow(points[i].x - points[j].x, 2) + Math.pow(points[i].y - points[j].y, 2)))
-    }
-    // console.log(graphs.findIndex(item => item.point1 == graph.point2 && item.weight == graph.weight) != undefined)
-    if (graph.weight != 0 && graphs.findIndex(item => item.point1 == graph.point2 && item.weight == graph.weight) == -1) {
-      graphs.push(graph)
+// console.log(bubbleSortByWeight(info.children, info.gifts).children[0])
+const bubbleSortByDistance = (children = [{x: null, y: null}], gifts = [{id: null, x: null, y: null}]) => {
+  console.time('bubbleSortDistance')
+  for (let i = 0, endI = gifts.length - 1; i < endI; i++) {
+    for (let j = 0, endJ = endI - i; j < endJ; j++) {
+      if (children[j].distance > children[j + 1].distance) {
+        let swapGift = gifts[j]
+        let swapChild = children[j]
+        gifts[j] = gifts[j + 1]
+        children[j] = children[j + 1]
+        gifts[j + 1] = swapGift
+        children[j + 1] = swapChild
+      }
     }
   }
+  console.timeEnd('bubbleSortDistance')
+  return {children, gifts};
+}
+// console.log(bubbleSortByDistance(info.children, info.gifts).children[0])
+
+const walkAvoidStorm = (storm, previousRoute) => {
+  let routes = []
+  storm.aura = storm.aura.filter(aura => aura.x <= 10000 && aura.y <= 10000 && aura.x >= 0 && aura.y >= 0)
+  storm.aura.forEach((aura, index) => {
+    storm.aura[index].distance = getDistance(previousRoute.x, previousRoute.y, aura.x, aura.y)
+  })
+  for (let i = 0, endI = storm.aura.length - 1; i < endI; i++) {
+    for (let j = 0, endJ = endI - i; j < endJ; j++) {
+      if (storm.aura[j].distance > storm.aura[j + 1].distance) {
+        let swapAura = storm.aura[j]
+        storm.aura[j] = storm.aura[j + 1]
+        storm.aura[j + 1] = swapAura
+      }
+    }
+  }
+  let aura1, aura2, aura3
+  if (storm.aura.length > 1) {
+    aura1 = storm.aura[0]
+    routes.push({"x": aura1.x, "y": aura1.y})
+  }
+  if (storm.aura.length > 2) {
+    aura2 = storm.aura[1]
+    routes.push({"x": aura2.x, "y": aura2.y})
+  }
+  // if(storm.aura.length > 3){
+  //   aura3 = storm.aura.filter(aura => aura.id == (aura2.id+1 > 6 ? 1 : aura2.id+1))[0]
+  //   routes.push({"x": aura3.x, "y": aura3.y})
+  // }
+  return routes
+}
+const buildBag = () => {
+  // return a bag
 }
 
-function prima(oldgraphs,oldpoints) {
-  let startPoint = oldgraphs[0].point1
-  let newGraphs = []
-  function getPoints(data,point){
-    let result = []
-    for (let i = 0; i < data.length; i++) {
-      if(data[i].point1 == point || data[i].point2 == point){
-        result.push(data[i])
-      }
-    }
-    return result
+const generateGraph = () => {
+  console.time('generateGraph')
+  info.graphPoints = []
+  info.graph = []
+  console.log(213123123,info.children.length)
+  for (let i = 0; i < info.children.length; i++) {
+    info.graphPoints.push({x: info.children[i].x, y: info.children[i].y})
   }
-  while(oldgraphs.length > 1){
-    // console.log("startPoint",startPoint)
-    let peaks = getPoints(oldgraphs,startPoint)
-    // console.log("peaks",peaks)
-    if(peaks.length > 0){
-      oldgraphs = oldgraphs.filter(graph => graph.point1 != startPoint && graph.point2 != startPoint)
-      let peak = peaks.reduce((prev,curr)=> prev.weight < curr.weight ? prev : curr)
-      // console.log("oldgraphs",oldgraphs)
-      newGraphs.push(peak)
-      startPoint = startPoint == peak.point1 ? peak.point2 : peak.point1
-      // console.log("startPoint",startPoint)
-      if(oldgraphs.length == 1){
-        newGraphs.push(oldgraphs[0])
-      }
+  for (let i = 0; i < info.snowAreas.length; i++) {
+    for (let j = 0; j < info.snowAreas[i].aura.length; j++) {
+      info.graphPoints.push({x: info.snowAreas[i].aura[j].x, y: info.snowAreas[i].aura[j].y})
     }
   }
-  return newGraphs
+  info.graphPoints.push({x: 2500, y: 2500})
+  info.graphPoints.push({x: data.santa_base.x, y: data.santa_base.y})
+  info.graphPoints.push({x: 7500, y: 2500})
+  info.graphPoints.push({x: 2500, y: 7500})
+  info.graphPoints.push({x: 7500, y: 7500})
+  for (let i = 0; i < info.graphPoints.length; i++) {
+    if(isCoordinateInSnowArea(info.graphPoints[i].x,info.graphPoints[i].y)[0] && info.children.find(child => child.x == info.graphPoints[i].x && child.y == info.graphPoints[i].y) != undefined){
+      info.graphPoints.splice(i,1)
+    }
+  }
+  const childIntoTheStorm = info.children.filter(child => child.isInSnowArea[0])
+  for (let i = 0; i < info.graphPoints.length; i++) {
+    for (let j = 0; j < info.graphPoints.length; j++) {
+      console.clear()
+      const candidate = {
+        x1: info.graphPoints[i].x,
+        y1: info.graphPoints[i].y,
+        x2: info.graphPoints[j].x,
+        y2: info.graphPoints[j].y,
+        distance: getDistance(info.graphPoints[i].x,info.graphPoints[i].y,info.graphPoints[j].x,info.graphPoints[j].y),
+        insideStorm: childIntoTheStorm.find(child => child.x == info.graphPoints[i].x && child.y == info.graphPoints[i].y || child.x == info.graphPoints[j].x && child.y == info.graphPoints[j].y),
+        touchStorm: isTouchingSnowArea(info.graphPoints[i].x,info.graphPoints[i].y,info.graphPoints[j].x,info.graphPoints[j].y)
+      }
+      if(candidate.distance > 0){
+        if(!candidate.touchStorm[0] && candidate.insideStorm == undefined || candidate.touchStorm[0] && candidate.insideStorm != undefined ){
+          if(!info.graph.find(graph => graph.x1 == candidate.x1 && graph.y1 == candidate.y1 && graph.x2 == candidate.x2 && graph.y2 == candidate.y2 ||
+            graph.x1 == candidate.x2 && graph.y1 == candidate.y2 && graph.x2 == candidate.x1 && graph.y2 == candidate.y1)){
+            info.graph.push({
+              x1: candidate.x1,
+              y1: candidate.y1,
+              x2: candidate.x2,
+              y2: candidate.y2,
+              distance: candidate.distance
+            })
+          }
+        }
+      }
+      console.log(info.graph.length)
+    }
+  }
+  console.timeEnd('generateGraph')
 }
 
-function getPoint(id) {
-  let point
-  for (let i = 0; i < points.length; i++) {
-    if (points[i].id == id) {
-      point = points[i]
-      break
-    }
-  }
-  return point
+const createRoute = (bag) => {
+
 }
-graphs = prima(graphs,points)
-console.log("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
-console.log(points[1],points.length)
-console.log(graphs[0],graphs.length)
-// console.log(points)
-// console.log(graphs)
-let data = [
-  {start: 1, end: 1, weight: 0}
-]
+const sendData = async (bags, routes) => {
+  console.log(bags.length, routes.length)
+  const config = {
+    method: "post",
+    url: data.route_url,
+    headers: {
+      Accept: "application/json",
+      "X-API-Key": data.token,
+      "Content-Type": "application/json"
+    },
+    data: JSON.stringify({
+      "mapID": data.mapID,
+      "moves": routes,
+      "stackOfBags": bags.reverse()
+    })
+  }
+  return axios(config).then(res => {
+    return res.data
+  }).catch((error) => {
+    console.error(error)
+    return false
+  });
+}
+const main = async () => {
+  console.time('deadsanta')
+  info.snowAreas = updateSnowAreas(info.snowAreas)
+  info.children = updateChildren(info.children, info.gifts)
+  const listOfBags = []
+  const listOfRoutes = []
+  let currentWeight = 0
+  let currentVolume = 0
+  let temporaryBag = []
+  generateGraph()
+  console.log(info.graph.length)
+  for (let i = 0; i < info.gifts.length; i++) {
+    console.log(info.graph[i])
+  }
+
+
+  const fs = require("fs")
+  const path = require("path")
+  fs.readFile('data.js', (err, data) => {
+    if (err) {
+      console.log(err)
+      fs.appendFile('data.js', `let json = ${JSON.stringify(info.graph)}`, (err2) => {
+        if (err2) console.log(err2)
+        console.log("saved")
+      })
+    } else {
+      data = data.toString('utf8');
+      if (data != `let json = ${JSON.stringify(info.graph)}`) {
+        fs.unlink('data.js', function (err1) {
+          if (err1) console.log(err1);
+          console.log("sdfs")
+          fs.appendFile('data.js', `let json = ${JSON.stringify(info.graph)}`, (err2) => {
+            if (err2) console.log(err2)
+            console.log("saved")
+          })
+        });
+      }
+    }
+  })
+  console.log(info.gifts.length, info.children.length, info.snowAreas.length)
+  // let query = await sendData(listOfBags, listOfRoutes)
+  // console.log(query)
+  // if(query.roundId && query.roundId.length > 1){
+  //   let interval = setInterval(()=>{
+  //     axios.get(`${data.route_url}/${query.roundId}`).then(res=>{
+  //       console.log(res.data)
+  //       if(res.data.data.total_time > 0){
+  //         clearInterval(interval)
+  //       }
+  //     })
+  //   },30000)
+  // }
+  console.timeEnd('deadsanta')
+}
+main()

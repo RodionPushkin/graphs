@@ -1,11 +1,12 @@
+
 let points = []
-points.push({x: 0, y: 0})
-for (let i = 0; i < 100; i++) {
-  points.push({
-    x: Math.round(Math.random() * (100 - 1)),
-    y: Math.round(Math.random() * (100 - 1))
-  })
-}
+// points.push({x: 0, y: 0})
+// for (let i = 0; i < 100; i++) {
+//   points.push({
+//     x: Math.round(Math.random() * (100 - 1)),
+//     y: Math.round(Math.random() * (100 - 1))
+//   })
+// }
 let graphs = []
 for (let i = 0; i < points.length; i++) {
   points[i].id = i + 1
@@ -83,7 +84,7 @@ console.log(points)
 console.log(graphs)
 graphs = prima(graphs,points)
 function setup() {
-  createCanvas(100, 100);
+  createCanvas(1000, 1000);
   for (let i = 0; i < points.length; i++) {
     circle(points[i].x, points[i].y, 2)
   }
